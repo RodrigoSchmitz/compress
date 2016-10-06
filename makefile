@@ -24,7 +24,7 @@ SRCDIR = src
 
 # Toolchain.
 CC = gcc
-CFLAGS  = -std=c99 -pedantic
+CFLAGS  = -std=c11 -pedantic
 CFLAGS += -Wall -Werror
 CFLAGS += -I $(INCDIR) -pthread -O3
 

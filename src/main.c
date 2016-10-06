@@ -1,127 +1,137 @@
-/*
- * Copyright(C) 2014-2016 Pedro H. Penna <pedrohenriquepenna@gmail.com>
- * 
- * This file is part of compress.
- * 
- * compress is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
- * 
- * compress is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with compress. If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include <global.h>
-#include <stdlib.h>
+#include <buffer.h>
 #include <stdio.h>
+#include <global.h>
 #include <util.h>
+#include <dictionary.h>
+#include <errno.h>
+#include <string.h>	
+#include <pthread.h>
 
-/* Command line arguments. */
-static int compress = 1; /* Compress?         */
-char *infile = NULL;     /* Input file name.  */
-char *outfile = NULL;    /* Output file name. */
+#define RADIX 256 /* Radix of input data. */
+#define WIDTH  12 /* Width of code word.  */
 
-/*
- * Prints program usage and exits.
- */
-static void usage(void)
+
+static void lzw_writebytes(buffer_t inbuf, FILE *outfile)
 {
-	printf("\nUsage: compress [options] <input file> <output file>\n\n");
-	printf("Brief: Compress a file.\n\n");
-	printf("Options:\n");
-	printf("  -c, --create  Create a new archive\n");
-	printf("  -x, --extract Extract file from archive\n");
+	int ch;
 	
-	exit(EXIT_SUCCESS);
+	/* Read data from file to the buffer. */
+	while ((ch = buffer_get(inbuf)) != EOF)
+		fputc(ch, outfile);
 }
 
-/*
- * Reads command line arguments.
- */
-static void readargs(int argc, char **argv)
+static code_t lzw_init(dictionary_t dict, int radix)
 {
-	int i;     /* Loop index.       */
-	char *arg; /* Working argument. */
+	for (int i = 0; i < radix; i++)
+		dictionary_add(dict, 0, i, i);
 	
-	/* Read command line arguments. */
-	for (i = 1; i < argc; i++) {
-		arg = argv[i];
+	return (radix);
+}
+
+static void lzw_compress(buffer_t in, buffer_t out)
+{	
+	unsigned ch;       /* Working character. */
+	int i, ni;         /* Working entries.   */
+	code_t code;       /* Current code.      */
+	dictionary_t dict; /* Dictionary.        */
+	
+	dict = dictionary_create(1 << WIDTH);
+	
+	i = 0;
+	code = lzw_init(dict, RADIX);
+
+	/* Compress data. */
+	ch = buffer_get(in);
+	while (ch != EOF)
+	{	
+		ni = dictionary_find(dict, i, (char)ch);
 		
-		/* Parse option. */
-		if (arg[0] == '-')
-		{
-			switch (arg[1])
-			{
-				/* Compress. */
-				case 'c':
-					compress = 1;
-					break;
-				
-				/* Decompress. */
-				case 'x':
-					compress = 0;
-					break;
-			}
+		/* Find longest prefix. */
+		if (ni >= 0)
+		{			
+			ch = buffer_get(in);
+			i = ni;
+		
+			/* Next character. */
+			if (ch != EOF)
+				continue;
 		}
 		
-		/* Get input file name. */
-		else if (infile == NULL)
-			infile = arg;
+		buffer_put(out, dict->entries[i].code);
 		
-		/* Get output file name. */
-		else if (outfile == NULL)
-			outfile = arg;
+		if (code == ((1 << WIDTH) - 1))
+		{	
+			i = 0;
+			dictionary_reset(dict);
+			code = lzw_init(dict, RADIX);
+			buffer_put(out, RADIX);
+			continue;
+		}
+		
+		dictionary_add(dict, i, ch, ++code);
+		i = 0;
 	}
 	
-	/* Missing input file. */
-	if (infile == NULL)
-	{
-		warning("missing input file");
-		usage();
-	}
-	
-	/* Missing output file. */
-	if (outfile == NULL)
-		warning("missing output file");
+	buffer_put(out, EOF);
+
+	dictionary_destroy(dict);
 }
 
-/*
- * Usage: compress [options] <input file> <output file>
- *
- * Brief: Compress a file.
- *
- * Options:
- *     -c, --create  Create a new archive.
- *     -x, --extract Extract file from archive.
- */
-int main(int argc, char **argv)
+static void lzw_readbytes(FILE *infile, buffer_t outbuf)
 {
-	FILE *input;  /* Input file.  */
-	FILE *output; /* Output file. */
-	
-	readargs(argc, argv);
-	
-	/* Open input file. */
-	input = fopen(infile, "r");
-	if (input == NULL)
-		error("cannot open input file");
-	
-	/* Open output file. */
-	output = fopen(outfile, "w");
-	if (output == NULL)
-		error("cannot open output file");
+	int ch;
 
-	lzw(input, output, compress);
-
-	/* House keeping. */
-	fclose(input);
-	fclose(output);
+	/* Read data from file to the buffer. */
+	while ((ch = fgetc(infile)) != EOF)
+		buffer_put(outbuf, ch & 0xff);
 	
-	return (EXIT_SUCCESS);
+	buffer_put(outbuf, EOF);
+}
+
+int main()
+{	
+	//lendo os dados do arquivo de entrada
+	//aki tah chamando direto pelo codigo, no trabalho msm 
+	//pega pelo argumento passado
+	//ou seja, fopen(argv[1]), responsabilidade do usuario passar um path correto
+	buffer_t out = buffer_create(1024);
+	unsigned i = buffer_get(out);
+
+	//testando se buffer foi criado com valores nulos
+	printf("%d\n",i);
+
+	FILE *in = fopen("dummy.txt","r");
+	lzw_readbytes(in,out);
+
+	//testando se funcao deu certo
+	i = buffer_get(out);
+	printf("%d\n",i);
+
+	//cria buffer q recebe dados de saida da compressao do arquivo de entrada
+	buffer_t out_2 = buffer_create(1024);
+	i = buffer_get(out_2);
+
+	printf("%d\n",i);
+
+
+	//emulando worker thread q le do buffer de entrada, comprime 
+	//e coloca dados num outro buffer de saida
+	lzw_compress(out,out_2);
+	
+	//testando se funcionou
+	i = buffer_get(out_2);
+
+	printf("%d\n",i);
+
+	//escreve conteudo do buffer de saida no arquivo de saida
+	FILE *output = fopen("dummy.lzw","w");
+
+	if(output == NULL)
+	{
+		printf("deu zica\n");
+		return 1;
+	}
+
+	lzw_writebytes(out_2,output);
+	return 0;
 }

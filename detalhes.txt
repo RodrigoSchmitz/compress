@@ -1,0 +1,3 @@
+Após execução, o programa deve criar um arquivo dummy.lzw no diretório de execução.
+
+Ignorar as funções metidas no meio do arquivo main.c; foi apenas para resolver problemas de dependência e possibilitar testes.

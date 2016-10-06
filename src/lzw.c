@@ -25,7 +25,7 @@
 #include <util.h>
 
 /* 
- * Parameters.
+ * Parameters.	
  */
 #define RADIX 256 /* Radix of input data. */
 #define WIDTH  12 /* Width of code word.  */
@@ -313,6 +313,12 @@ static void lzw_decompress(buffer_t in, buffer_t out)
  */
 void lzw(FILE *input, FILE *output, int compress)
 {
+
+	if(input == NULL || output == NULL){
+		printf("Nao faz merda, filho da puta\n");
+		return;
+	}
+
 	buffer_t inbuf;  /* Input buffer.  */
 	buffer_t outbuf; /* Output buffer. */
 
