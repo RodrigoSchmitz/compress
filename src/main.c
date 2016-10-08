@@ -7,9 +7,11 @@
 #include <errno.h>
 #include <string.h>	
 #include <pthread.h>
+#include <semaphore.h>
 
 #define RADIX 256 /* Radix of input data. */
 #define WIDTH  12 /* Width of code word.  */
+#define BUFFSIZE 1024
 
 
 /*static void lzw_writebytes(buffer_t inbuf, FILE *outfile)
@@ -120,54 +122,61 @@ static void lzw_readbits(FILE *in, buffer_t out)
 }
 //===============================================================================
 
-
+sem_t itensproducao,itensconsumo;
 buffer_t out;
 buffer_t out_2;
 FILE *in;
 pthread_mutex_t mutex;
+int produto = 5;
 
 void *consumir(void *arg)
 {
-	int vazias = 0;
-	int ocupadas = 0;
+	int i = 0;
 
-	for(int x = 0; x<50; x++)
-	{	
+	while(i < 10)
+	{
+		sem_wait(&itensconsumo);
 		pthread_mutex_lock(&mutex);
-		unsigned i = buffer_get(out);
-		
-		if(i == 0)
-		{
-			printf("Buffer vazio\n");
-			vazias++;
-		}
-		else
-		{
-			printf("Algo aqui\n");
-			ocupadas++;
-		}
-
-		pthread_mutex_unlock(&mutex);	
+		printf("consumindo item do buffer: %u\n",buffer_get(out));
+		pthread_mutex_unlock(&mutex);
+		sem_post(&itensproducao);
+		i++;
 	}
-	
 
-	printf("posicoes vazias : %d\n",vazias);
-	printf("posicoes ocupadas : %d\n",ocupadas);					
+	return NULL;
+}
+
+void *produzir(void *arg)
+{
+	int i = 0;
+
+	while(i < 10)
+	{
+		sem_wait(&itensproducao);
+		pthread_mutex_lock(&mutex);
+		//int bit = fgetc(in) != EOF ? fgetc(in) : -1;
+		//printf("bit: %d\n",bit);
+		int bit = rand()%50; 		
+		printf("produzindo item no buffer: %d\n",bit);
+		buffer_put(out,bit);
+		pthread_mutex_unlock(&mutex);
+		sem_post(&itensconsumo);
+		i++;
+	}
+
 	return NULL;
 }
 
 int main()
 {
-	out = buffer_create(1024);
-	out_2 = buffer_create(1024);
-	in = fopen("dummy.txt","r");
-	pthread_t thread;
-	pthread_create(&thread,NULL,consumir,NULL);
-	lzw_readbits(in,out);
-	lzw_readbytes(in,out);
-	int ch = fgetc(in);
-	buffer_put(out,ch & 0xff);
-	buffer_put(out,6 & 0xff);			//numero qlqr apenas para testar
-	pthread_join(thread,NULL);
+	out = buffer_create(BUFFSIZE);		//buffer q abriga dados do arquivo de entrada
+	sem_init(&itensconsumo,0,0);
+	sem_init(&itensproducao,0,BUFFSIZE);
+	in = fopen("dummytext.txt","r");
+	pthread_t consumidor,produtor;
+	pthread_create(&produtor,NULL,produzir,NULL);
+	pthread_create(&consumidor,NULL,consumir,NULL);
+	pthread_join(consumidor,NULL);
+	pthread_join(produtor,NULL);
 	return 0;
 }
